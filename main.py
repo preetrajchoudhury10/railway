@@ -1,8 +1,3 @@
-"""
-GenAI Job Finder — Railway-deployable FastAPI app
-Scrapes Reddit, career pages, Naukri, Indeed, and more for GenAI jobs.
-"""
-
 import json, os, hashlib, threading, time
 from datetime import datetime
 from fastapi import FastAPI, Request
@@ -24,7 +19,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(BASE, "jobs.json")
 HISTORY_FILE = os.path.join(BASE, "history.json")
 
-cache = {"jobs": [], "last_updated": None, "running": False, "html": None}
+cache = {"jobs": [], "last_updated": None, "running": False}
 
 
 def load_jobs():
@@ -40,20 +35,17 @@ def save_jobs(jobs):
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE) as f:
-            return set(json.load(f))
-    return set()
+            return json.load(f)
+    return []
 
 def save_history(h):
     with open(HISTORY_FILE, "w") as f:
-        json.dump(list(h), f)
+        json.dump(h, f)
 
 def generate_html(jobs, last_updated, is_running):
-    """Generate the full HTML page"""
     jobs_json = json.dumps(jobs)
     sources = sorted(set(j.get("source", "Unknown") for j in jobs))
     sources_json = json.dumps(sources)
-    total = len(jobs)
-
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,15 +86,22 @@ tr:hover {{ background: #1e1e3a; }}
 .loading {{ display: inline-block; width: 16px; height: 16px; border: 2px solid #8888aa; border-top: 2px solid #4361ee; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; }}
 @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
 .last-updated {{ color: #666688; font-size: 12px; }}
+.progress-bar {{ height: 4px; background: #2a2a4a; border-radius: 2px; margin: 8px 0; overflow: hidden; }}
+.progress-fill {{ height: 100%; background: linear-gradient(90deg, #4361ee, #2a9d8f); border-radius: 2px; transition: width 2s; }}
+.progress-text {{ color: #8888aa; font-size: 12px; text-align: center; margin-bottom: 8px; }}
 @media (max-width: 768px) {{ .container {{ padding: 12px; }} .header {{ padding: 16px; }} td, th {{ padding: 8px; }} }}
 </style>
 </head>
 <body>
 <div class="header">
     <h1>GenAI Job Finder</h1>
-    <p>Live jobs from Reddit, Naukri, Career Pages, Indeed, and more</p>
+    <p>Scraping 200+ sources for GenAI jobs — accessible from any device</p>
 </div>
 <div class="container">
+    <div id="progressArea" style="display:none">
+        <div class="progress-text" id="progressText">Initializing...</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
     <div class="stats" id="stats"></div>
     <div class="toolbar">
         <button class="btn refresh-btn" id="huntBtn" onclick="triggerHunt()">🔄 Refresh Jobs</button>
@@ -123,6 +122,7 @@ tr:hover {{ background: #1e1e3a; }}
 <script>
 let allJobs = {jobs_json};
 let sources = {sources_json};
+let progressInterval = null;
 
 const sel = document.getElementById("sourceFilter");
 sources.forEach(s => {{ sel.innerHTML += `<option value="${{s}}">${{s}}</option>` }});
@@ -131,13 +131,11 @@ function render(jobs) {{
     const total = allJobs.length;
     const srcCounts = {{}};
     allJobs.forEach(j => {{ const s = j.source || 'Unknown'; srcCounts[s] = (srcCounts[s]||0)+1 }});
-    const genaiCount = allJobs.filter(j => j.role.toLowerCase().includes('genai') || j.role.toLowerCase().includes('generative')).length;
-    const redditCount = allJobs.filter(j => j.source === 'Reddit').length;
     document.getElementById("stats").innerHTML = `
         <div class="stat-card"><div class="num">${{total}}</div><div class="label">Total Jobs</div></div>
-        <div class="stat-card"><div class="num">${{Object.keys(srcCounts).length}}</div><div class="label">Sources</div></div>
-        <div class="stat-card"><div class="num">${{genaiCount}}</div><div class="label">GenAI Roles</div></div>
-        <div class="stat-card"><div class="num">${{redditCount}}</div><div class="label">From Reddit</div></div>
+        <div class="stat-card"><div class="num">${{Object.keys(srcCounts).length}}</div><div class="label">Sources Hit</div></div>
+        <div class="stat-card"><div class="num">${{new Set(allJobs.map(j=>j.co)).size}}</div><div class="label">Companies</div></div>
+        <div class="stat-card"><div class="num">${{allJobs.filter(j=>(j.role+'').toLowerCase().includes('genai')||(j.role+'').toLowerCase().includes('generative')).length}}</div><div class="label">GenAI Roles</div></div>
     `;
     const tbody = document.getElementById("jobTable");
     const empty = document.getElementById("emptyState");
@@ -165,23 +163,36 @@ function filterJobs() {{
     if (q) jobs = jobs.filter(j => (j.role+'').toLowerCase().includes(q) || (j.co+'').toLowerCase().includes(q));
     render(jobs);
 }}
+async function pollProgress() {{
+    try {{
+        const r = await fetch('/api/progress');
+        const p = await r.json();
+        document.getElementById("progressArea").style.display = "block";
+        const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+        document.getElementById("progressFill").style.width = pct + "%";
+        document.getElementById("progressText").textContent =
+            `Scanning ${{p.current || '...'}} — ${{p.done}}/${{p.total}} sources (${{p.hits}} found jobs, ${{p.errors}} errors)`;
+        if (!p.running) {{
+            clearInterval(progressInterval);
+            progressInterval = null;
+            document.getElementById("progressArea").style.display = "none";
+            const r2 = await fetch('/api/jobs');
+            const j = await r2.json();
+            allJobs = j.jobs;
+            document.getElementById("lastUpdated").textContent = 'Last: ' + (j.last_updated || 'Just now');
+            filterJobs();
+            document.getElementById("huntBtn").disabled = false;
+            document.getElementById("huntBtn").innerHTML = '🔄 Refresh Jobs';
+        }}
+    }} catch(e) {{}}
+}}
 async function triggerHunt() {{
     const btn = document.getElementById("huntBtn");
     btn.disabled = true; btn.innerHTML = '<span class="loading"></span> Hunting...';
     try {{
         await fetch('/api/hunt', {{method:'POST'}});
-        const poll = setInterval(async () => {{
-            const s = await (await fetch('/api/stats')).json();
-            if (!s.is_running) {{
-                clearInterval(poll);
-                const r = await fetch('/api/jobs');
-                const j = await r.json();
-                allJobs = j.jobs;
-                document.getElementById("lastUpdated").textContent = 'Last: ' + (j.last_updated || 'Just now');
-                filterJobs();
-                btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs';
-            }}
-        }}, 3000);
+        progressInterval = setInterval(pollProgress, 2000);
+        pollProgress();
     }} catch(e) {{ btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs'; }}
 }}
 filterJobs();
@@ -219,6 +230,11 @@ def get_stats():
         "is_running": cache["running"]
     }
 
+@app.get("/api/progress")
+def get_progress():
+    from scraper import get_progress as gp
+    return gp()
+
 @app.post("/api/hunt")
 def trigger_hunt():
     thread = threading.Thread(target=run_hunt, daemon=True)
@@ -238,13 +254,11 @@ def run_hunt():
     try:
         from scraper import hunt_all
         fresh = hunt_all()
-        if not fresh:
-            cache["running"] = False
-            return
         history = load_history()
+        seen_history = set(history)
         for j in fresh:
-            history.add(j["id"])
-        save_history(history)
+            seen_history.add(j["id"])
+        save_history(list(seen_history))
         existing = load_jobs()
         seen = {j["id"] for j in existing}
         for j in fresh:
@@ -254,7 +268,8 @@ def run_hunt():
         save_jobs(existing)
         cache["jobs"] = existing
         cache["last_updated"] = datetime.now().isoformat()
-        print(f"Hunt complete: {len(fresh)} fresh, {len(existing)} total")
+        from scraper import SOURCES
+        print(f"Hunt complete: {len(fresh)} unique from {len(SOURCES)} sources, {len(existing)} total")
     except Exception as e:
         print(f"Hunt error: {e}")
     finally:
