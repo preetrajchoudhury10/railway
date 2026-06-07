@@ -27,7 +27,16 @@ EXCLUDE = [
     "senior","lead","principal","staff","manager","director",
     "head of","architect","vp","vice president","15+","10+",
     "7+ years","5+ years","experienced","san francisco",
-    "remote - us","united states","austin","chicago","boston"
+    "remote - us","united states","austin","chicago","boston",
+    "3+ years","4+ years","6+ years","8+ years","12+ years",
+]
+COURSE_WORDS = [
+    "course", "masterclass", "workshop", "bootcamp", "tutorial",
+    "enroll now", "curriculum", "syllabus", "register now",
+    "free class", "learning path", "online program", "certification",
+    "certificate", "ai course", "learn genai", "genai course",
+    "prompt engineering course", "ai workshop", "learn ai",
+    "study plan", "self-paced", "online course",
 ]
 INCLUDE_LEVEL = [
     "intern","fresher","entry level","entry-level","new grad","new graduate",
@@ -56,11 +65,41 @@ def jid(co, role):
 
 def relevant(title, desc=""):
     text = f"{title} {desc[:500]}".lower()
+
     for ex in EXCLUDE:
         if ex in text:
             return False
-    score = sum(1 for kw in KEYWORDS if kw.lower() in text)
-    return score >= 1
+    for cw in COURSE_WORDS:
+        if cw in text:
+            return False
+
+    genai_score = sum(1 for kw in KEYWORDS if kw.lower() in text)
+    if genai_score < 1:
+        return False
+
+    level_score = sum(1 for lw in INCLUDE_LEVEL if lw.lower() in text)
+    if level_score < 1:
+        return False
+
+    return True
+
+def validate_job(job):
+    """Post-hoc validation: ensure job is a real entry-level GenAI opening, not a course or senior role"""
+    text = f"{job.get('role','')} {job.get('desc','')[:500]}".lower()
+    for ex in EXCLUDE:
+        if ex in text:
+            return False
+    for cw in COURSE_WORDS:
+        if cw in text:
+            return False
+    genai_score = sum(1 for kw in KEYWORDS if kw.lower() in text)
+    if genai_score < 1:
+        return False
+    level_score = sum(1 for lw in INCLUDE_LEVEL if lw.lower() in text)
+    if level_score < 1:
+        return False
+    return True
+
 
 def fetch_text_fast(url, timeout=8):
     try:
@@ -315,19 +354,19 @@ INDEED_DOMAINS = [
     ("fr.indeed.com", "France"), ("sg.indeed.com", "Singapore"),
     ("ae.indeed.com", "UAE"), ("nz.indeed.com", "New Zealand"),
 ]
-INDEED_QUERIES = ["generative+AI+fresher", "genai+engineer", "AI+Engineer+fresher", "LLM+fresher", "machine+learning+fresher"]
+INDEED_QUERIES = ["generative+AI+fresher+entry+level", "genai+engineer+fresher", "AI+Engineer+entry+level", "LLM+fresher+intern", "machine+learning+fresher+entry"]
 for domain, country in INDEED_DOMAINS:
     for q in INDEED_QUERIES[:3]:
         SOURCES.append((f"Indeed-{country[:3]}-{q[:15]}", handler_indeed, (q, domain, country)))
 
 # --- LINKEDIN (15 queries = 15 sources) ---
 LINKEDIN_QUERIES = [
-    "generative+AI+India", "genai+fresher+India", "LLM+Engineer+India",
+    "generative+AI+entry+level+India", "genai+fresher+India", "LLM+Engineer+fresher+India",
     "AI+Engineer+Entry+Level+India", "machine+learning+fresher+India",
-    "deep+learning+fresher+India", "NLP+Engineer+India",
-    "LangChain+fresher+India", "prompt+engineer+India",
-    "agentic+AI+India", "RAG+engineer+India", "AI+intern+India",
-    "artificial+intelligence+fresher", "AI+developer+fresher+Pune",
+    "deep+learning+fresher+India", "NLP+Engineer+fresher+India",
+    "LangChain+fresher+India", "prompt+engineer+fresher+India",
+    "agentic+AI+fresher+India", "RAG+engineer+fresher+India", "AI+intern+fresher+India",
+    "artificial+intelligence+fresher+India", "AI+developer+fresher+Pune",
     "data+scientist+entry+level+India",
 ]
 for q in LINKEDIN_QUERIES:
@@ -335,21 +374,21 @@ for q in LINKEDIN_QUERIES:
 
 # --- DUCKDUCKGO SEARCH (15 queries = 15 sources) ---
 DDG_QUERIES = [
-    "generative AI fresher India 2026 job",
-    "genai engineer entry level India hiring",
-    "LLM engineer fresher India job opening",
-    "AI engineer fresher Pune job",
-    "agentic AI fresher job India 2026",
-    "RAG engineer fresher hiring India",
-    "LangChain developer fresher job",
-    "prompt engineer fresher India",
-    "NLP engineer entry level India",
-    "generative AI internship India 2026",
-    "AI ML fresher job India",
-    "deep learning fresher job India",
-    "machine learning fresher hiring India",
-    "AI developer fresher Bangalore",
-    "genai job fresher remote India",
+    "generative AI fresher entry level India 2026 hiring",
+    "genai engineer fresher entry level India",
+    "LLM engineer fresher entry level India job",
+    "AI engineer fresher entry level Pune job",
+    "agentic AI fresher entry level India 2026",
+    "RAG engineer fresher intern India",
+    "LangChain developer fresher entry level India",
+    "prompt engineer fresher entry level India",
+    "NLP engineer entry level fresher India",
+    "generative AI internship fresher India 2026",
+    "AI ML fresher entry level job India",
+    "deep learning fresher entry level India",
+    "machine learning fresher entry level India hiring",
+    "AI developer fresher entry level Bangalore",
+    "genai job fresher entry level remote India",
 ]
 DDG_URL = "https://html.duckduckgo.com/html/?q={q}"
 for q in DDG_QUERIES:
@@ -357,16 +396,16 @@ for q in DDG_QUERIES:
 
 # --- BING SEARCH (10 queries = 10 sources) ---
 BING_QUERIES = [
-    "generative AI fresher India job 2026",
-    "genai engineer fresher hiring India",
-    "LLM engineer entry level job India",
-    "AI fresher job Pune 2026",
-    "agentic AI job fresher India",
-    "LangChain developer fresher India",
-    "prompt engineer job fresher India",
-    "RAG engineer fresher hiring",
-    "AI ML engineer fresher India",
-    "generative AI internship 2026 India",
+    "generative AI fresher entry level India 2026",
+    "genai engineer fresher entry level hiring India",
+    "LLM engineer entry level fresher India job",
+    "AI fresher entry level Pune job 2026",
+    "agentic AI fresher entry level job India",
+    "LangChain developer fresher entry level India",
+    "prompt engineer fresher entry level job India",
+    "RAG engineer fresher intern hiring India",
+    "AI ML engineer fresher entry level India",
+    "generative AI internship fresher 2026 India",
 ]
 BING_URL = "https://www.bing.com/search?q={q}+job+hiring"
 for q in BING_QUERIES:
@@ -374,16 +413,16 @@ for q in BING_QUERIES:
 
 # --- YAHOO SEARCH (10 queries = 10 sources) ---
 YAHOO_QUERIES = [
-    "generative AI fresher India job",
-    "genai engineer fresher hiring",
-    "LLM entry level job India",
-    "AI engineer fresher Pune 2026",
-    "agentic AI fresher job",
-    "machine learning fresher India",
-    "deep learning entry level India",
-    "LangChain developer fresher",
-    "AI intern India 2026",
-    "genai fresher job Bangalore",
+    "generative AI fresher entry level India job",
+    "genai engineer fresher entry level hiring",
+    "LLM entry level fresher job India",
+    "AI engineer fresher entry level Pune 2026",
+    "agentic AI fresher entry level job India",
+    "machine learning fresher entry level India",
+    "deep learning entry level fresher India",
+    "LangChain developer fresher entry level India",
+    "AI intern fresher India 2026",
+    "genai fresher entry level job Bangalore",
 ]
 YAHOO_URL = "https://search.yahoo.com/search?p={q}+job"
 for q in YAHOO_QUERIES:
@@ -481,6 +520,14 @@ def hunt_all(exclude_ids=None):
         for future in as_completed(futures):
             pass
 
+    # Validate every job — filter out courses, senior roles, non-fresher positions
+    before = len(all_jobs)
+    all_jobs = [j for j in all_jobs if validate_job(j)]
+    after = len(all_jobs)
+    filtered = before - after
+    if filtered:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Validation: filtered {filtered} non-fresher/non-job entries ({after} remaining)")
+
     # Deduplicate and exclude applied
     seen = set()
     unique = []
@@ -493,7 +540,7 @@ def hunt_all(exclude_ids=None):
         progress["running"] = False
         progress["current"] = ""
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Hunt complete: {len(unique)} unique jobs from {len(all_jobs)} raw, {len(exclude_ids)} excluded, {len(SOURCES)} sources")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Hunt complete: {len(unique)} unique jobs from {before} raw ({filtered} filtered, {len(exclude_ids)} excluded), {len(SOURCES)} sources")
     return unique
 
 
