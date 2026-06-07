@@ -7,9 +7,18 @@ import json, os, hashlib, threading, time
 from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 app = FastAPI(title="GenAI Job Finder")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(BASE, "jobs.json")
@@ -161,14 +170,18 @@ async function triggerHunt() {{
     btn.disabled = true; btn.innerHTML = '<span class="loading"></span> Hunting...';
     try {{
         await fetch('/api/hunt', {{method:'POST'}});
-        setTimeout(async () => {{
-            const r = await fetch('/api/jobs');
-            const j = await r.json();
-            allJobs = j.jobs;
-            document.getElementById("lastUpdated").textContent = 'Last: ' + (j.last_updated || 'Just now');
-            filterJobs();
-            btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs';
-        }}, 5000);
+        const poll = setInterval(async () => {{
+            const s = await (await fetch('/api/stats')).json();
+            if (!s.is_running) {{
+                clearInterval(poll);
+                const r = await fetch('/api/jobs');
+                const j = await r.json();
+                allJobs = j.jobs;
+                document.getElementById("lastUpdated").textContent = 'Last: ' + (j.last_updated || 'Just now');
+                filterJobs();
+                btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs';
+            }}
+        }}, 3000);
     }} catch(e) {{ btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs'; }}
 }}
 filterJobs();
