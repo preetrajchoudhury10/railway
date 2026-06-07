@@ -1,21 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GenAI Job Finder</title>
 <style>
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f8;
+  --bg-card: #ffffff;
+  --text: #1a1a2e;
+  --text-secondary: #555577;
+  --text-muted: #8888aa;
+  --border: #e0e0ee;
+  --border-hover: #4361ee;
+  --header-from: #f0f0ff;
+  --header-to: #e8e8ff;
+  --header-border: #d0d0ee;
+  --header-text: #1a1a2e;
+  --header-subtitle: #666688;
+  --shadow: rgba(67,97,238,0.08);
+  --chip-bg: transparent;
+  --chip-text: #666688;
+  --chip-border: #d0d0ee;
+  --chip-hover-border: #4361ee;
+  --chip-hover-text: #1a1a2e;
+  --input-bg: #f5f5f8;
+  --input-border: #d0d0ee;
+  --input-text: #1a1a2e;
+  --progress-bg: #e0e0ee;
+  --badge-applied-bg: #2a9d8f;
+  --badge-applied-text: #fff;
+  --tip-bg: #f0f8ff;
+  --tip-border: #d0e8ff;
+  --tip-text: #555577;
+  --tip-strong: #e9c46a;
+  --btn-outline-border: #d0d0ee;
+  --btn-outline-text: #666688;
+  --btn-outline-hover-bg: #f0f0ff;
+  --meta-bg: #f0f0f8;
+  --meta-text: #666688;
+  --source-bg: #e8e8ff;
+  --source-text: #5555cc;
+  --progress-container-bg: #f5f5f8;
+  --progress-container-border: #e0e0ee;
+  --progress-bar-bg: #e0e0ee;
+}
+
+[data-theme="dark"] {
+  --bg: #0a0a12;
+  --bg-secondary: #12122a;
+  --bg-card: #12122a;
+  --text: #e0e0e0;
+  --text-secondary: #8888bb;
+  --text-muted: #666688;
+  --border: #2a2a5a;
+  --border-hover: #4361ee;
+  --header-from: #0f0f23;
+  --header-to: #1a1a3e;
+  --header-border: #2a2a5a;
+  --header-text: #ffffff;
+  --header-subtitle: #8888bb;
+  --shadow: rgba(67,97,238,0.1);
+  --chip-bg: transparent;
+  --chip-text: #aaaacc;
+  --chip-border: #2a2a5a;
+  --chip-hover-border: #4361ee;
+  --chip-hover-text: #fff;
+  --input-bg: #12122a;
+  --input-border: #2a2a5a;
+  --input-text: #e0e0e0;
+  --progress-bg: #2a2a5a;
+  --badge-applied-bg: #2a9d8f;
+  --badge-applied-text: #fff;
+  --tip-bg: #1a1a3a;
+  --tip-border: #2a2a5a;
+  --tip-text: #8888bb;
+  --tip-strong: #e9c46a;
+  --btn-outline-border: #3a3a6a;
+  --btn-outline-text: #aaaacc;
+  --btn-outline-hover-bg: #1a1a3a;
+  --meta-bg: #1a1a3a;
+  --meta-text: #8888bb;
+  --source-bg: #1e1e4a;
+  --source-text: #8888dd;
+  --progress-container-bg: #12122a;
+  --progress-container-border: #2a2a5a;
+  --progress-bar-bg: #2a2a5a;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a12; color: #e0e0e0; min-height: 100vh; }
-.header { background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%); padding: 20px 40px; border-bottom: 1px solid #2a2a5a; position: sticky; top: 0; z-index: 100; }
-.header h1 { color: #fff; font-size: 22px; display: flex; align-items: center; gap: 8px; }
-.header h1 span { background: linear-gradient(90deg, #4361ee, #2a9d8f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.header .subtitle { color: #8888bb; font-size: 13px; margin-top: 2px; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+.header { background: linear-gradient(135deg, var(--header-from), var(--header-to)); padding: 20px 40px; border-bottom: 1px solid var(--header-border); position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; }
+.header-left h1 { color: var(--header-text); font-size: 22px; display: flex; align-items: center; gap: 8px; }
+.header-left h1 span { background: linear-gradient(90deg, #4361ee, #2a9d8f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-left .subtitle { color: var(--header-subtitle); font-size: 13px; margin-top: 2px; }
+.theme-toggle { background: transparent; border: 1px solid var(--header-border); color: var(--header-subtitle); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px; transition: all 0.2s; }
+.theme-toggle:hover { background: rgba(255,255,255,0.05); color: var(--header-text); }
 .container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 18px; }
-.stat-card { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 14px; text-align: center; }
-.stat-card .num { font-size: 26px; font-weight: 700; color: #fff; }
-.stat-card .label { font-size: 11px; color: #8888bb; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.stat-card .num { font-size: 26px; font-weight: 700; color: var(--text); }
+.stat-card .label { font-size: 11px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 .btn { padding: 7px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s; }
 .btn-primary { background: #4361ee; color: white; }
@@ -23,27 +109,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-success { background: #2a9d8f; color: white; }
 .btn-success:hover { background: #21867a; }
-.btn-outline { background: transparent; border: 1px solid #3a3a6a; color: #aaaacc; }
-.btn-outline:hover { background: #1a1a3a; }
+.btn-outline { background: transparent; border: 1px solid var(--btn-outline-border); color: var(--btn-outline-text); }
+.btn-outline:hover { background: var(--btn-outline-hover-bg); }
 .btn-sm { padding: 4px 10px; font-size: 11px; }
-select, input[type=text] { padding: 7px 10px; border: 1px solid #2a2a5a; border-radius: 8px; font-size: 13px; background: #12122a; color: #e0e0e0; outline: none; }
+select, input[type=text] { padding: 7px 10px; border: 1px solid var(--input-border); border-radius: 8px; font-size: 13px; background: var(--input-bg); color: var(--input-text); outline: none; transition: background 0.3s, color 0.3s, border 0.3s; }
 select:focus, input[type=text]:focus { border-color: #4361ee; }
 .search-input { flex: 1; min-width: 160px; }
 .role-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-.role-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #2a2a5a; background: transparent; color: #aaaacc; transition: all 0.2s; }
-.role-chip:hover { border-color: #4361ee; color: #fff; }
+.role-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--chip-border); background: var(--chip-bg); color: var(--chip-text); transition: all 0.2s; }
+.role-chip:hover { border-color: var(--chip-hover-border); color: var(--chip-hover-text); }
 .role-chip.active { background: #4361ee; border-color: #4361ee; color: #fff; }
 .job-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
-.job-card { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 16px; transition: all 0.2s; position: relative; }
-.job-card:hover { border-color: #4361ee; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(67,97,238,0.1); }
+.job-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; transition: all 0.2s; position: relative; }
+.job-card:hover { border-color: var(--border-hover); transform: translateY(-1px); box-shadow: 0 4px 20px var(--shadow); }
 .job-card.applied { opacity: 0.35; }
 .job-card .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-.job-card .company { font-size: 15px; font-weight: 600; color: #fff; }
-.job-card .role { font-size: 14px; color: #c0c0e0; margin-bottom: 8px; }
+.job-card .company { font-size: 15px; font-weight: 600; color: var(--text); }
+.job-card .role { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
 .job-card .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-.meta-item { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #1a1a3a; color: #8888bb; }
+.meta-item { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--meta-bg); color: var(--meta-text); }
 .meta-item.date { color: #2a9d8f; }
-.meta-item.source { background: #1e1e4a; color: #8888dd; }
+.meta-item.source { background: var(--source-bg); color: var(--source-text); }
 .role-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; display: inline-block; }
 .role-badge.genai { background: #1a3a2a; color: #2a9d8f; }
 .role-badge.prompt-eng { background: #3a2a1a; color: #e9c46a; }
@@ -56,28 +142,31 @@ select:focus, input[type=text]:focus { border-color: #4361ee; }
 .role-badge.llm { background: #2a1a1a; color: #ff6b6b; }
 .role-badge.other { background: #2a2a3a; color: #8888bb; }
 .job-card .actions { display: flex; gap: 6px; margin-top: 10px; }
-.empty-state { text-align: center; padding: 60px 20px; color: #666688; }
-.loading { display: inline-block; width: 14px; height: 14px; border: 2px solid #8888aa; border-top: 2px solid #4361ee; border-radius: 50%; animation: spin 1s linear infinite; }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top: 2px solid #4361ee; border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.last-updated { color: #666688; font-size: 11px; }
-.progress-container { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
-.progress-text { color: #8888bb; font-size: 12px; margin-bottom: 6px; text-align: center; }
-.progress-bar { height: 6px; background: #2a2a5a; border-radius: 3px; overflow: hidden; }
+.last-updated { color: var(--text-muted); font-size: 11px; }
+.progress-container { background: var(--progress-container-bg); border: 1px solid var(--progress-container-border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+.progress-text { color: var(--text-secondary); font-size: 12px; margin-bottom: 6px; text-align: center; }
+.progress-bar { height: 6px; background: var(--progress-bar-bg); border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, #4361ee, #2a9d8f); border-radius: 3px; transition: width 1s ease; }
-.progress-detail { display: flex; justify-content: space-between; font-size: 11px; color: #666688; margin-top: 4px; }
-.schedule-info { font-size: 11px; color: #555577; margin-left: auto; }
+.progress-detail { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.schedule-info { font-size: 11px; color: var(--text-muted); margin-left: auto; }
 .toolbar-left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-.applied-badge { background: #2a9d8f; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
-.fresher-tip { background: #1a1a3a; border: 1px solid #2a2a5a; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #8888bb; }
-.fresher-tip strong { color: #e9c46a; }
+.applied-badge { background: var(--badge-applied-bg); color: var(--badge-applied-text); font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.fresher-tip { background: var(--tip-bg); border: 1px solid var(--tip-border); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: var(--tip-text); }
+.fresher-tip strong { color: var(--tip-strong); }
 @media (max-width: 768px) { .container { padding: 12px; } .header { padding: 14px 16px; } .job-grid { grid-template-columns: 1fr; } .toolbar-right { margin-left: 0; width: 100%; } }
 </style>
 </head>
 <body>
 <div class="header">
-    <h1><span>GenAI</span> Job Finder</h1>
-    <div class="subtitle">Fresher/Entry-Level GenAI jobs only — scanned from 300+ sources + 2,500 Indian companies. Courses &amp; senior roles automatically filtered out.</div>
+    <div class="header-left">
+        <h1><span>GenAI</span> Job Finder</h1>
+        <div class="subtitle">Fresher/Entry-Level GenAI jobs only — scanned from 300+ sources + 2,500 Indian companies. Courses &amp; senior roles automatically filtered out.</div>
+    </div>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">&#9790; <span id="themeLabel">Light</span></button>
 </div>
 <div class="container">
     <div id="progressArea" style="display:none">
@@ -104,7 +193,7 @@ select:focus, input[type=text]:focus { border-color: #4361ee; }
             <span class="schedule-info" id="scheduleInfo">Auto: __SCHEDULE_INFO__</span>
         </div>
         <div class="toolbar-right">
-            <label style="color:#8888aa;font-size:12px;display:flex;align-items:center;gap:4px">
+            <label style="color:var(--text-muted);font-size:12px;display:flex;align-items:center;gap:4px">
                 <input type="checkbox" id="hideApplied" onchange="filterJobs()" checked> Hide Applied
             </label>
         </div>
@@ -156,6 +245,27 @@ var sel = document.getElementById("sourceFilter");
 if (sources.length) {
     sel.innerHTML += '<option value="">All Sources</option>' + sources.map(function(s) { return '<option value="' + escAttr(s) + '">' + esc(s) + '</option>'; }).join("");
 }
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    document.getElementById('themeLabel').textContent = theme === 'dark' ? 'Light' : 'Dark';
+}
+
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme');
+    setTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+(function initTheme() {
+    var stored = localStorage.getItem('theme');
+    if (stored) {
+        document.documentElement.setAttribute('data-theme', stored);
+        document.getElementById('themeLabel').textContent = stored === 'dark' ? 'Light' : 'Dark';
+    } else {
+        document.getElementById('themeLabel').textContent = 'Light';
+    }
+})();
 
 function classifyRole(role) {
     var r = (role || '').toLowerCase();
@@ -226,7 +336,7 @@ function render(jobs) {
             '<span class="meta-item source">' + srcName + '</span>' +
             (loc ? '<span class="meta-item">' + esc(loc) + '</span>' : '') +
             '</div>' +
-            (desc ? '<div style="font-size:11px;color:#666688;margin-bottom:6px">' + esc(desc) + '</div>' : '') +
+            (desc ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">' + esc(desc) + '</div>' : '') +
             '<div class="actions">' + applyBtn + tickBtn + '</div></div>';
     }).join("");
 }
