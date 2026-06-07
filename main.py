@@ -18,6 +18,7 @@ app.add_middleware(
 BASE = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(BASE, "jobs.json")
 HISTORY_FILE = os.path.join(BASE, "history.json")
+APPLIED_FILE = os.path.join(BASE, "applied.json")
 
 cache = {"jobs": [], "last_updated": None, "running": False}
 
@@ -41,6 +42,16 @@ def load_history():
 def save_history(h):
     with open(HISTORY_FILE, "w") as f:
         json.dump(h, f)
+
+def load_applied():
+    if os.path.exists(APPLIED_FILE):
+        with open(APPLIED_FILE) as f:
+            return set(json.load(f))
+    return set()
+
+def save_applied(a):
+    with open(APPLIED_FILE, "w") as f:
+        json.dump(list(a), f)
 
 def generate_html(jobs, last_updated, is_running):
     jobs_json = json.dumps(jobs)
@@ -108,6 +119,9 @@ tr:hover {{ background: #1e1e3a; }}
         <span class="last-updated" id="lastUpdated">Last: {last_updated}</span>
         <select id="sourceFilter" onchange="filterJobs()"><option value="">All Sources</option></select>
         <input class="search-input" id="searchInput" placeholder="Search company or role..." oninput="filterJobs()">
+        <label style="color:#8888aa;font-size:13px;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="hideApplied" onchange="filterJobs()" checked> Hide Applied
+        </label>
     </div>
     <table>
         <thead><tr>
@@ -147,20 +161,43 @@ function render(jobs) {{
         const sal = j.salary || '-';
         const date = j.date ? j.date.slice(0,10) : '-';
         const url = j.url || '';
-        const btn = url ? `<a href="${{esc(url)}}" target="_blank" class="btn btn-success" style="padding:4px 10px;font-size:12px">Apply</a>` : '';
-        return `<tr><td><span class="source-badge">${{esc(src)}}</span></td>
+        const applied = appliedIds.has(j.id);
+        const applyBtn = url ? `<a href="${{esc(url)}}" target="_blank" class="btn btn-success" style="padding:4px 10px;font-size:12px">Apply</a>` : '';
+        const tickBtn = applied
+            ? `<span class="source-badge" style="background:#2a9d8f;color:#fff">✓ Applied</span>`
+            : `<button class="btn btn-outline" style="padding:3px 8px;font-size:11px" onclick="markApplied('${{j.id}}')">✓ Mark Applied</button>`;
+        const rowStyle = applied ? 'opacity:0.4' : '';
+        return `<tr style="${{rowStyle}}"><td><span class="source-badge">${{esc(src)}}</span></td>
             <td><strong>${{esc(co)}}</strong></td><td>${{esc(role)}}</td>
             <td>${{esc(loc)}}</td><td>${{esc(sal)}}</td><td>${{date}}</td>
-            <td class="job-actions">${{btn}}</td></tr>`;
+            <td class="job-actions">${{applyBtn}} ${{tickBtn}}</td></tr>`;
     }}).join("");
 }}
 function esc(s) {{ if (!s) return '-'; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }}
+let appliedIds = new Set();
+async function loadApplied() {{
+    try {{
+        const r = await fetch('/api/applied');
+        const d = await r.json();
+        appliedIds = new Set(d.applied || []);
+        filterJobs();
+    }} catch(e) {{}}
+}}
+async function markApplied(id) {{
+    try {{
+        await fetch('/api/apply/' + id, {{method:'POST'}});
+        appliedIds.add(id);
+        filterJobs();
+    }} catch(e) {{ alert('Failed to mark as applied'); }}
+}}
 function filterJobs() {{
     let jobs = [...allJobs];
     const src = document.getElementById("sourceFilter").value;
     const q = document.getElementById("searchInput").value.toLowerCase();
+    const hide = document.getElementById("hideApplied").checked;
     if (src) jobs = jobs.filter(j => (j.source||'').toLowerCase() === src.toLowerCase());
     if (q) jobs = jobs.filter(j => (j.role+'').toLowerCase().includes(q) || (j.co+'').toLowerCase().includes(q));
+    if (hide) jobs = jobs.filter(j => !appliedIds.has(j.id));
     render(jobs);
 }}
 async function pollProgress() {{
@@ -195,6 +232,7 @@ async function triggerHunt() {{
         pollProgress();
     }} catch(e) {{ btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs'; }}
 }}
+loadApplied();
 filterJobs();
 </script>
 </body>
@@ -241,6 +279,17 @@ def trigger_hunt():
     thread.start()
     return {"status": "started", "message": "Job hunt started in background"}
 
+@app.post("/api/apply/{job_id}")
+def mark_applied(job_id: str):
+    applied = load_applied()
+    applied.add(job_id)
+    save_applied(applied)
+    return {"status": "ok"}
+
+@app.get("/api/applied")
+def get_applied():
+    return {"applied": list(load_applied())}
+
 @app.get("/api/sources")
 def get_sources():
     jobs = cache["jobs"] or load_jobs()
@@ -253,7 +302,7 @@ def run_hunt():
     cache["running"] = True
     try:
         from scraper import hunt_all
-        fresh = hunt_all()
+        fresh = hunt_all(exclude_ids=load_applied())
         history = load_history()
         seen_history = set(history)
         for j in fresh:

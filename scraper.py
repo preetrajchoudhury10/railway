@@ -511,15 +511,16 @@ for name, url in EXTRA_JOB_BOARDS:
 progress = {"current": "", "done": 0, "total": len(SOURCES), "hits": 0, "errors": 0, "running": False}
 progress_lock = threading.Lock()
 
-def hunt_all():
+def hunt_all(exclude_ids=None):
     global progress
+    exclude_ids = set(exclude_ids or [])
     with progress_lock:
         progress["running"] = True
         progress["done"] = 0
         progress["hits"] = 0
         progress["errors"] = 0
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting parallel hunt with {len(SOURCES)} sources...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting parallel hunt with {len(SOURCES)} sources, {len(exclude_ids)} excluded...")
 
     all_jobs = []
     all_jobs_lock = threading.Lock()
@@ -557,11 +558,11 @@ def hunt_all():
         for future in as_completed(futures):
             pass  # results collected in scrape_one
 
-    # Deduplicate
+    # Deduplicate and exclude applied
     seen = set()
     unique = []
     for j in all_jobs:
-        if j["id"] not in seen:
+        if j["id"] not in seen and j["id"] not in exclude_ids:
             seen.add(j["id"])
             unique.append(j)
 
@@ -569,7 +570,7 @@ def hunt_all():
         progress["running"] = False
         progress["current"] = ""
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Hunt complete: {len(unique)} unique jobs from {len(all_jobs)} raw, {len(SOURCES)} sources")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Hunt complete: {len(unique)} unique jobs from {len(all_jobs)} raw, {len(exclude_ids)} excluded, {len(SOURCES)} sources")
     return unique
 
 
