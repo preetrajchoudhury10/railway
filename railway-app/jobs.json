@@ -1,0 +1,112 @@
+[
+  {
+    "id": "87f760df93c72b6d30b836a63adaed9a",
+    "co": "HARMAN",
+    "role": "Associate Engineer (Agentic AI)",
+    "url": "https://openjobnet.com/harman-associate-engineer-2026-agentic-ai-engineer/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Bangalore",
+    "salary": "Competitive",
+    "desc": "0-1yr. LLMs, RAG, LangChain, Agentic AI."
+  },
+  {
+    "id": "2dc8c040b378ced60d8ad48b733b9f19",
+    "co": "Associative",
+    "role": "AI Developer (Fresher)",
+    "url": "https://associative.in/ai-developer-fresher/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Pune",
+    "salary": "\u20b94-8 LPA",
+    "desc": "Python, LangChain, TensorFlow. Full-time Pune."
+  },
+  {
+    "id": "cd4a93a98d41ab6e7ded90456fbd58b2",
+    "co": "Siemens Energy",
+    "role": "AI/Machine Learning Engineer",
+    "url": "https://freshersrecruitment.co.in/siemens-energy-off-campus-drive-2026/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Gurugram",
+    "salary": "Competitive",
+    "desc": "0-3yr. Python, ML, GenAI, RAG."
+  },
+  {
+    "id": "bb4f7e8fa2fd5e712e9e0aeff758e885",
+    "co": "EY",
+    "role": "AI Developer (GenAI)",
+    "url": "https://jobcode.in/freshers-ai-developer-2026-ey-hiring-ai-developers-for-freshers/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Trivandrum",
+    "salary": "Competitive",
+    "desc": "0-1yr. GenAI, Python, ML."
+  },
+  {
+    "id": "9aef8cea1b6809c0069105e35e9c0eae",
+    "co": "TraceLink",
+    "role": "Agentic AI Engineer",
+    "url": "https://freshershunt.in/tracelink-freshers-hiring-2026-agentic-ai-engineer/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Pune",
+    "salary": "Competitive",
+    "desc": "0-2yr. GenAI, RAG, multi-agent."
+  },
+  {
+    "id": "72e0a08a8b415fd12ca26bab28baf847",
+    "co": "Cognizant Ace",
+    "role": "Full-Stack AI Engineer",
+    "url": "https://jobcode.in/cognizant-full-stack-ai-engineer-2026-ace-team-hiring-for-freshers-12-18-lpa/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Multiple Cities",
+    "salary": "\u20b912-18 LPA",
+    "desc": "2026 batch. 12LPA/18LPA. LLMs, RAG."
+  },
+  {
+    "id": "922751f6c9feb59c883a820f841fa3ff",
+    "co": "NVIDIA",
+    "role": "Test & Tools Development Engineer",
+    "url": "https://offcampusjobs4u.com/nvidia-off-campus-drive-2026-test-tools-development-engineer-pune/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Pune",
+    "salary": "Competitive",
+    "desc": "2026 batch. Python, LLMs, multi-agent."
+  },
+  {
+    "id": "1978fa140cd93f64b575ebc7a13ef3e8",
+    "co": "IndiaMART",
+    "role": "Associate Engineer (AI/ML)",
+    "url": "https://freshershunt.in/indiamart-off-campus-drive-2026/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Noida",
+    "salary": "\u20b96-10 LPA",
+    "desc": "Fresher. Python, LLMs, LangChain."
+  },
+  {
+    "id": "f1f5cef5871a4ac2b85265c019b14283",
+    "co": "Fujitsu",
+    "role": "Data & AI Apprentice",
+    "url": "https://freshershunt.in/fujitsu-off-campus-drive-2026-data-ai-apprentice-pune/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Pune",
+    "salary": "Stipend",
+    "desc": "Python, SQL, GenAI."
+  },
+  {
+    "id": "f5a976fe03e42967e9884f411496d373",
+    "co": "Citi",
+    "role": "GenAI Developer",
+    "url": "https://www.jobinsider.in/jobs/citi-gen-ai-developer-job-sde-engineer-26/",
+    "source": "Seed",
+    "date": "2026-06-07T13:03:41.890715",
+    "location": "Chennai/Pune",
+    "salary": "\u20b915-17 LPA",
+    "desc": "0-2yr. GenAI."
+  }
+]
