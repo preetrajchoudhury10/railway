@@ -16,48 +16,278 @@ app.add_middleware(
 )
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-JOBS_FILE = os.path.join(BASE, "jobs.json")
-HISTORY_FILE = os.path.join(BASE, "history.json")
-APPLIED_FILE = os.path.join(BASE, "applied.json")
-SCHEDULE_FILE = os.path.join(BASE, "schedule.json")
 TEMPLATE_FILE = os.path.join(BASE, "template.html")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 cache = {"jobs": [], "last_updated": None, "running": False}
 schedule_info = {"last_auto": None, "enabled": True, "hour": 2}
 
 
-def load_jobs():
+# --- Database helpers ---
+
+def get_conn():
+    import psycopg2
+    return psycopg2.connect(DATABASE_URL)
+
+def db_init():
+    if not DATABASE_URL:
+        print("No DATABASE_URL — using file-based persistence (local dev)")
+        return
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS applied_jobs (
+            id TEXT PRIMARY KEY
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hunt_jobs (
+            id TEXT PRIMARY KEY,
+            data JSONB NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hunt_history (
+            id TEXT PRIMARY KEY
+        )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Database tables initialized")
+
+def db_get_state(key, default=None):
+    if not DATABASE_URL:
+        return None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM app_state WHERE key = %s", (key,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else default
+    except Exception as e:
+        print(f"db_get_state error ({key}): {e}")
+        return default
+
+def db_set_state(key, value):
+    if not DATABASE_URL:
+        return
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO app_state (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (key, value)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"db_set_state error ({key}): {e}")
+
+def db_load_applied():
+    if not DATABASE_URL:
+        return load_applied_file()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM applied_jobs")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return set(r[0] for r in rows)
+    except Exception as e:
+        print(f"db_load_applied error: {e}")
+        return set()
+
+def db_add_applied(job_id):
+    if not DATABASE_URL:
+        return add_applied_file(job_id)
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO applied_jobs (id) VALUES (%s) ON CONFLICT DO NOTHING", (job_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"db_add_applied error: {e}")
+
+def db_load_jobs():
+    if not DATABASE_URL:
+        return load_jobs_file()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT data FROM hunt_jobs ORDER BY id")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except Exception as e:
+        print(f"db_load_jobs error: {e}")
+        return []
+
+def db_save_jobs(jobs):
+    if not DATABASE_URL:
+        return save_jobs_file(jobs)
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("TRUNCATE hunt_jobs")
+        for j in jobs:
+            cur.execute("INSERT INTO hunt_jobs (id, data) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (j.get("id", ""), json.dumps(j)))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"db_save_jobs error: {e}")
+
+def db_merge_jobs(fresh):
+    if not DATABASE_URL:
+        return merge_jobs_file(fresh)
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        for j in fresh:
+            cur.execute("INSERT INTO hunt_jobs (id, data) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (j.get("id", ""), json.dumps(j)))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"db_merge_jobs error: {e}")
+
+def db_load_history():
+    if not DATABASE_URL:
+        return load_history_file()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM hunt_history")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except Exception as e:
+        print(f"db_load_history error: {e}")
+        return []
+
+def db_save_history(history):
+    if not DATABASE_URL:
+        return save_history_file(history)
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("TRUNCATE hunt_history")
+        for h in history:
+            cur.execute("INSERT INTO hunt_history (id) VALUES (%s) ON CONFLICT DO NOTHING", (h,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"db_save_history error: {e}")
+
+
+# --- File-based fallbacks ---
+
+APPLIED_FILE = os.path.join(BASE, "applied.json")
+JOBS_FILE = os.path.join(BASE, "jobs.json")
+HISTORY_FILE = os.path.join(BASE, "history.json")
+
+def load_jobs_file():
     if os.path.exists(JOBS_FILE):
         with open(JOBS_FILE) as f:
             return json.load(f)
     return []
 
-def save_jobs(jobs):
+def save_jobs_file(jobs):
     with open(JOBS_FILE, "w") as f:
         json.dump(jobs, f, indent=2)
 
-def load_history():
+def merge_jobs_file(fresh):
+    existing = load_jobs_file()
+    seen = {j["id"] for j in existing}
+    for j in fresh:
+        if j["id"] not in seen:
+            existing.append(j)
+            seen.add(j["id"])
+    save_jobs_file(existing)
+    return existing
+
+def load_history_file():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE) as f:
             return json.load(f)
     return []
 
-def save_history(h):
+def save_history_file(h):
     with open(HISTORY_FILE, "w") as f:
         json.dump(h, f)
 
-def load_applied():
+def load_applied_file():
     if os.path.exists(APPLIED_FILE):
         with open(APPLIED_FILE) as f:
             return set(json.load(f))
     return set()
 
-def save_applied(a):
+def save_applied_file(a):
     with open(APPLIED_FILE, "w") as f:
         json.dump(list(a), f)
 
+def add_applied_file(job_id):
+    applied = load_applied_file()
+    applied.add(job_id)
+    save_applied_file(applied)
+
+
+# --- Load/save wrappers ---
+
+def load_applied():
+    return db_load_applied()
+
+def add_applied(job_id):
+    db_add_applied(job_id)
+
+def load_jobs():
+    return db_load_jobs()
+
+def save_jobs(jobs):
+    db_save_jobs(jobs)
+
+def merge_jobs(fresh):
+    return db_merge_jobs(fresh)
+
+def load_history():
+    return db_load_history()
+
+def save_history(h):
+    db_save_history(h)
+
+
+# --- Schedule (uses app_state in DB, file fallback) ---
+
+SCHEDULE_FILE = os.path.join(BASE, "schedule.json")
+
 def load_schedule():
     global schedule_info
+    if DATABASE_URL:
+        raw = db_get_state("schedule")
+        if raw:
+            s = json.loads(raw)
+            schedule_info["last_auto"] = s.get("last_auto")
+            schedule_info["enabled"] = s.get("enabled", True)
+            schedule_info["hour"] = s.get("hour", 2)
+            return schedule_info
     if os.path.exists(SCHEDULE_FILE):
         with open(SCHEDULE_FILE) as f:
             s = json.load(f)
@@ -67,8 +297,13 @@ def load_schedule():
     return schedule_info
 
 def save_schedule():
+    if DATABASE_URL:
+        db_set_state("schedule", json.dumps(schedule_info))
     with open(SCHEDULE_FILE, "w") as f:
         json.dump(schedule_info, f)
+
+
+# --- Helpers ---
 
 def classify_role(role):
     r = (role or "").lower()
@@ -204,9 +439,7 @@ def trigger_hunt():
 
 @app.post("/api/apply/{job_id}")
 def mark_applied(job_id: str):
-    applied = load_applied()
-    applied.add(job_id)
-    save_applied(applied)
+    add_applied(job_id)
     return {"status": "ok"}
 
 @app.get("/api/applied")
@@ -262,7 +495,6 @@ def run_hunt():
 
 
 def scheduler_loop():
-    """Background thread that auto-triggers hunts at night"""
     while True:
         try:
             load_schedule()
@@ -310,10 +542,10 @@ def seed_default_jobs():
     cache["last_updated"] = datetime.now().isoformat()
     print(f"Seeded {len(defaults)} default jobs")
 
-# Start scheduler thread
+# Initialize DB and data
+db_init()
 scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
 scheduler_thread.start()
-
 seed_default_jobs()
 load_schedule()
 
