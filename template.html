@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GenAI Job Finder</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a12; color: #e0e0e0; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%); padding: 20px 40px; border-bottom: 1px solid #2a2a5a; position: sticky; top: 0; z-index: 100; }
+.header h1 { color: #fff; font-size: 22px; display: flex; align-items: center; gap: 8px; }
+.header h1 span { background: linear-gradient(90deg, #4361ee, #2a9d8f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header .subtitle { color: #8888bb; font-size: 13px; margin-top: 2px; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat-card { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 14px; text-align: center; }
+.stat-card .num { font-size: 26px; font-weight: 700; color: #fff; }
+.stat-card .label { font-size: 11px; color: #8888bb; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.btn { padding: 7px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s; }
+.btn-primary { background: #4361ee; color: white; }
+.btn-primary:hover { background: #3a56d4; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-success { background: #2a9d8f; color: white; }
+.btn-success:hover { background: #21867a; }
+.btn-outline { background: transparent; border: 1px solid #3a3a6a; color: #aaaacc; }
+.btn-outline:hover { background: #1a1a3a; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+select, input[type=text] { padding: 7px 10px; border: 1px solid #2a2a5a; border-radius: 8px; font-size: 13px; background: #12122a; color: #e0e0e0; outline: none; }
+select:focus, input[type=text]:focus { border-color: #4361ee; }
+.search-input { flex: 1; min-width: 160px; }
+.role-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.role-chip { padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #2a2a5a; background: transparent; color: #aaaacc; transition: all 0.2s; }
+.role-chip:hover { border-color: #4361ee; color: #fff; }
+.role-chip.active { background: #4361ee; border-color: #4361ee; color: #fff; }
+.job-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.job-card { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 16px; transition: all 0.2s; position: relative; }
+.job-card:hover { border-color: #4361ee; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(67,97,238,0.1); }
+.job-card.applied { opacity: 0.35; }
+.job-card .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.job-card .company { font-size: 15px; font-weight: 600; color: #fff; }
+.job-card .role { font-size: 14px; color: #c0c0e0; margin-bottom: 8px; }
+.job-card .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.meta-item { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #1a1a3a; color: #8888bb; }
+.meta-item.date { color: #2a9d8f; }
+.meta-item.source { background: #1e1e4a; color: #8888dd; }
+.role-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; display: inline-block; }
+.role-badge.genai { background: #1a3a2a; color: #2a9d8f; }
+.role-badge.prompt-eng { background: #3a2a1a; color: #e9c46a; }
+.role-badge.ai-eng { background: #1a2a3a; color: #4a9eff; }
+.role-badge.ml-eng { background: #2a1a3a; color: #b07aff; }
+.role-badge.nlp-eng { background: #1a3a3a; color: #4ad0ff; }
+.role-badge.rag { background: #3a1a2a; color: #ff6b9d; }
+.role-badge.agentic-ai { background: #2a2a1a; color: #ffd166; }
+.role-badge.deep-learning { background: #1a2a2a; color: #6bffb8; }
+.role-badge.llm { background: #2a1a1a; color: #ff6b6b; }
+.role-badge.other { background: #2a2a3a; color: #8888bb; }
+.job-card .actions { display: flex; gap: 6px; margin-top: 10px; }
+.empty-state { text-align: center; padding: 60px 20px; color: #666688; }
+.loading { display: inline-block; width: 14px; height: 14px; border: 2px solid #8888aa; border-top: 2px solid #4361ee; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.last-updated { color: #666688; font-size: 11px; }
+.progress-container { background: #12122a; border: 1px solid #2a2a5a; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+.progress-text { color: #8888bb; font-size: 12px; margin-bottom: 6px; text-align: center; }
+.progress-bar { height: 6px; background: #2a2a5a; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #4361ee, #2a9d8f); border-radius: 3px; transition: width 1s ease; }
+.progress-detail { display: flex; justify-content: space-between; font-size: 11px; color: #666688; margin-top: 4px; }
+.schedule-info { font-size: 11px; color: #555577; margin-left: auto; }
+.toolbar-left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.applied-badge { background: #2a9d8f; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.fresher-tip { background: #1a1a3a; border: 1px solid #2a2a5a; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #8888bb; }
+.fresher-tip strong { color: #e9c46a; }
+@media (max-width: 768px) { .container { padding: 12px; } .header { padding: 14px 16px; } .job-grid { grid-template-columns: 1fr; } .toolbar-right { margin-left: 0; width: 100%; } }
+</style>
+</head>
+<body>
+<div class="header">
+    <h1><span>GenAI</span> Job Finder</h1>
+    <div class="subtitle">Scanning 300+ sources + 2,500 Indian companies for fresher GenAI roles</div>
+</div>
+<div class="container">
+    <div id="progressArea" style="display:none">
+        <div class="progress-container">
+            <div class="progress-text" id="progressText">Initializing...</div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+            <div class="progress-detail">
+                <span id="progressDetail">Sources: 0/0</span>
+                <span id="progressCompany" style="display:none">Companies: 0/0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="fresher-tip" id="tipBar">
+        <strong>Tip:</strong> Apply within 24h of posting for best response. Use the date filter below to find fresh openings. Check back daily for new roles from 2,500+ Indian companies.
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <button class="btn btn-primary" id="huntBtn" onclick="triggerHunt()">&#8635; Refresh Jobs</button>
+            <span class="last-updated" id="lastUpdated">Last: __LAST_UPDATED__</span>
+            <span class="schedule-info" id="scheduleInfo">Auto: __SCHEDULE_INFO__</span>
+        </div>
+        <div class="toolbar-right">
+            <label style="color:#8888aa;font-size:12px;display:flex;align-items:center;gap:4px">
+                <input type="checkbox" id="hideApplied" onchange="filterJobs()" checked> Hide Applied
+            </label>
+        </div>
+    </div>
+
+    <div class="role-chips" id="roleChips">
+        <button class="role-chip active" data-role="" onclick="setRole(this, '')">All</button>
+        <button class="role-chip" data-role="genai" onclick="setRole(this, 'genai')">GenAI</button>
+        <button class="role-chip" data-role="prompt-eng" onclick="setRole(this, 'prompt-eng')">Prompt Eng</button>
+        <button class="role-chip" data-role="ai-eng" onclick="setRole(this, 'ai-eng')">AI Eng</button>
+        <button class="role-chip" data-role="ml-eng" onclick="setRole(this, 'ml-eng')">ML Eng</button>
+        <button class="role-chip" data-role="nlp-eng" onclick="setRole(this, 'nlp-eng')">NLP Eng</button>
+        <button class="role-chip" data-role="rag" onclick="setRole(this, 'rag')">RAG</button>
+        <button class="role-chip" data-role="agentic-ai" onclick="setRole(this, 'agentic-ai')">Agentic AI</button>
+        <button class="role-chip" data-role="deep-learning" onclick="setRole(this, 'deep-learning')">Deep Learning</button>
+        <button class="role-chip" data-role="llm" onclick="setRole(this, 'llm')">LLM</button>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:14px">
+        <select id="dateFilter" onchange="filterJobs()">
+            <option value="">All Dates</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+        </select>
+        <select id="sortFilter" onchange="filterJobs()">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+        </select>
+        <select id="sourceFilter" onchange="filterJobs()"><option value="">All Sources</option></select>
+        <input class="search-input" id="searchInput" placeholder="Search company or role..." oninput="filterJobs()">
+    </div>
+
+    <div class="job-grid" id="jobGrid"></div>
+    <div class="empty-state" id="emptyState" style="display:none">
+        <p>No jobs found matching your criteria.</p>
+        <p style="font-size:12px;margin-top:8px">Try changing filters or clicking Refresh Jobs to scan for new openings.</p>
+    </div>
+</div>
+
+<script>
+var allJobs = __JOBS_JSON__;
+var sources = __SOURCES_JSON__;
+var progressInterval = null;
+var currentRole = '';
+var appliedIds = new Set();
+
+var sel = document.getElementById("sourceFilter");
+if (sources.length) {
+    sel.innerHTML += '<option value="">All Sources</option>' + sources.map(function(s) { return '<option value="' + escAttr(s) + '">' + esc(s) + '</option>'; }).join("");
+}
+
+function classifyRole(role) {
+    var r = (role || '').toLowerCase();
+    if (/prompt engineer|prompt/.test(r)) return 'prompt-eng';
+    if (/rag|retrieval/.test(r)) return 'rag';
+    if (/agentic/.test(r)) return 'agentic-ai';
+    if (/genai|generative ai|generative/.test(r)) return 'genai';
+    if (/nlp|natural language/.test(r)) return 'nlp-eng';
+    if (/machine learning|ml engineer/.test(r)) return 'ml-eng';
+    if (/ai engineer|ai developer|ai\/ml|ai intern/.test(r)) return 'ai-eng';
+    if (/deep learning/.test(r)) return 'deep-learning';
+    if (/llm|large language/.test(r)) return 'llm';
+    return 'other';
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var diff = (Date.now() - d) / 1000;
+    if (diff < 0) return 'just now';
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    if (diff < 2592000) return Math.floor(diff/86400) + 'd ago';
+    return Math.floor(diff/2592000) + 'mo ago';
+}
+
+function render(jobs) {
+    var total = allJobs.length;
+    var new24 = allJobs.filter(function(j) { return j.date && (Date.now() - new Date(j.date).getTime()) < 86400000; }).length;
+    var genaiC = allJobs.filter(function(j) { return classifyRole(j.role||'') === 'genai'; }).length;
+    var companies = new Set(allJobs.map(function(j) { return j.co; }).filter(Boolean)).size;
+    var srcCount = new Set(allJobs.map(function(j) { return j.source; }).filter(Boolean)).size;
+
+    document.getElementById("stats").innerHTML =
+        '<div class="stat-card"><div class="num">' + total + '</div><div class="label">Total Jobs</div></div>' +
+        '<div class="stat-card"><div class="num">' + new24 + '</div><div class="label">New (24h)</div></div>' +
+        '<div class="stat-card"><div class="num" style="color:#2a9d8f">' + genaiC + '</div><div class="label">GenAI Roles</div></div>' +
+        '<div class="stat-card"><div class="num">' + companies + '</div><div class="label">Companies</div></div>' +
+        '<div class="stat-card"><div class="num">' + srcCount + '</div><div class="label">Sources Hit</div></div>';
+
+    var grid = document.getElementById("jobGrid");
+    var empty = document.getElementById("emptyState");
+    if (!jobs || jobs.length === 0) { grid.innerHTML = ""; empty.style.display = "block"; return; }
+    empty.style.display = "none";
+
+    grid.innerHTML = jobs.map(function(j) {
+        var role = j.role || '?', co = j.co || '?', id = j.id || '';
+        var cat = classifyRole(role);
+        var app = appliedIds.has(id);
+        var dateStr = timeAgo(j.date);
+        var srcName = (j.source || '?').replace(/[<>&]/g, '');
+        var url = j.url || '';
+        var loc = j.location || (j.desc ? j.desc.split(',')[0] : '');
+        var desc = (j.desc || '').substring(0, 120);
+
+        var applyBtn = url ? '<a href="' + escAttr(url) + '" target="_blank" class="btn btn-success btn-sm">Apply</a>' : '';
+        var tickBtn = app
+            ? '<span class="applied-badge">&#10003; Applied</span>'
+            : '<button class="btn btn-outline btn-sm" onclick="markApplied(\'' + id + '\')">&#10003; Mark Applied</button>';
+
+        return '<div class="job-card' + (app ? ' applied' : '') + '">' +
+            '<div class="top-row"><span class="company">' + esc(co) + '</span>' +
+            '<span class="role-badge ' + cat + '">' + cat.replace(/-/g, ' ') + '</span></div>' +
+            '<div class="role">' + esc(role) + '</div>' +
+            '<div class="meta">' +
+            (dateStr ? '<span class="meta-item date">' + dateStr + '</span>' : '') +
+            '<span class="meta-item source">' + srcName + '</span>' +
+            (loc ? '<span class="meta-item">' + esc(loc) + '</span>' : '') +
+            '</div>' +
+            (desc ? '<div style="font-size:11px;color:#666688;margin-bottom:6px">' + esc(desc) + '</div>' : '') +
+            '<div class="actions">' + applyBtn + tickBtn + '</div></div>';
+    }).join("");
+}
+
+function esc(s) { if (!s) return ''; var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escAttr(s) { if (!s) return '#'; return esc(s).replace(/"/g,'&quot;'); }
+
+function setRole(el, role) {
+    currentRole = role;
+    var chips = document.querySelectorAll('.role-chip');
+    for (var i = 0; i < chips.length; i++) {
+        chips[i].classList.toggle('active', chips[i].dataset.role === role);
+    }
+    filterJobs();
+}
+
+async function loadApplied() {
+    try {
+        var r = await fetch('/api/applied');
+        var d = await r.json();
+        appliedIds = new Set(d.applied || []);
+        filterJobs();
+    } catch(e) {}
+}
+
+async function markApplied(id) {
+    try {
+        await fetch('/api/apply/' + id, {method:'POST'});
+        appliedIds.add(id);
+        filterJobs();
+    } catch(e) { alert('Failed to mark as applied'); }
+}
+
+function filterJobs() {
+    var jobs = allJobs.slice();
+    var src = document.getElementById("sourceFilter").value;
+    var q = document.getElementById("searchInput").value.toLowerCase();
+    var hide = document.getElementById("hideApplied").checked;
+    var dateFilter = document.getElementById("dateFilter").value;
+    var sortFilter = document.getElementById("sortFilter").value;
+
+    if (currentRole) jobs = jobs.filter(function(j) { return classifyRole(j.role||'') === currentRole; });
+    if (src) jobs = jobs.filter(function(j) { return (j.source||'') === src; });
+    if (q) jobs = jobs.filter(function(j) { return (j.role+'').toLowerCase().includes(q) || (j.co+'').toLowerCase().includes(q); });
+    if (hide) jobs = jobs.filter(function(j) { return !appliedIds.has(j.id); });
+
+    var now = Date.now();
+    if (dateFilter === '24h') jobs = jobs.filter(function(j) { return j.date && (now - new Date(j.date).getTime()) < 86400000; });
+    else if (dateFilter === '7d') jobs = jobs.filter(function(j) { return j.date && (now - new Date(j.date).getTime()) < 604800000; });
+    else if (dateFilter === '30d') jobs = jobs.filter(function(j) { return j.date && (now - new Date(j.date).getTime()) < 2592000000; });
+
+    if (sortFilter === 'newest') jobs.sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
+    else if (sortFilter === 'oldest') jobs.sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+
+    render(jobs);
+}
+
+async function pollProgress() {
+    try {
+        var r = await fetch('/api/progress');
+        var p = await r.json();
+        document.getElementById("progressArea").style.display = "block";
+        var pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+        document.getElementById("progressFill").style.width = pct + "%";
+        document.getElementById("progressText").textContent =
+            (p.current || '...') + ' - ' + p.done + '/' + p.total + ' sources (' + p.hits + ' found, ' + p.errors + ' errors)';
+        document.getElementById("progressDetail").textContent = 'Sources: ' + p.done + '/' + p.total;
+
+        if (p.company && p.company.total > 0) {
+            var cpct = Math.round((p.company.done / p.company.total) * 100);
+            var companyEl = document.getElementById("progressCompany");
+            companyEl.style.display = "inline";
+            companyEl.textContent = 'Companies: ' + p.company.done + '/' + p.company.total + ' (' + cpct + '%)';
+        }
+
+        if (!p.running) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+            document.getElementById("progressArea").style.display = "none";
+            var r2 = await fetch('/api/jobs');
+            var j = await r2.json();
+            allJobs = j.jobs;
+            var lu = j.last_updated ? timeAgo(j.last_updated) : 'Just now';
+            document.getElementById("lastUpdated").textContent = 'Last: ' + lu;
+            filterJobs();
+            document.getElementById("huntBtn").disabled = false;
+            document.getElementById("huntBtn").innerHTML = '&#8635; Refresh Jobs';
+        }
+    } catch(e) {}
+}
+
+async function triggerHunt() {
+    var btn = document.getElementById("huntBtn");
+    btn.disabled = true; btn.innerHTML = '<span class="loading"></span> Hunting...';
+    try {
+        await fetch('/api/hunt', {method:'POST'});
+        progressInterval = setInterval(pollProgress, 2000);
+        pollProgress();
+    } catch(e) { btn.disabled = false; btn.innerHTML = '&#8635; Refresh Jobs'; }
+}
+
+loadApplied();
+filterJobs();
+</script>
+</body>
+</html>

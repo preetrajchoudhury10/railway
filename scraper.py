@@ -1,14 +1,18 @@
-# GenAI Job Hunter — Parallel Scraper with 200+ Sources
+# GenAI Job Hunter — Parallel Scraper with 300+ Sources
 # Each source is a unique website URL. Scraped in parallel with short timeouts.
 
 import requests
 from bs4 import BeautifulSoup
-import json, os, time, hashlib, re, threading
+import json, os, time, hashlib, re, threading, random
 from datetime import datetime
 from urllib.parse import quote, urljoin, urlparse, parse_qs
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib3
 urllib3.disable_warnings()
+
+COMPANIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "companies.json")
+company_progress = {"current": "", "done": 0, "total": 0}
+company_progress_lock = threading.Lock()
 
 KEYWORDS = [
     "generative ai","genai","llm","large language model","rag",
@@ -209,154 +213,85 @@ def handler_naukri(query, source_name):
                 jobs.append({"co": co, "role": title[:100], "url": link, "desc": "", "source": source_name})
     return jobs[:10]
 
-def handler_internshala(path, source_name):
-    url = f"https://internshala.com/{path}/"
-    html = fetch_text_fast(url)
-    if not html: return []
-    soup = BeautifulSoup(html, "html5lib")
-    jobs = []
-    seen = set()
-    for card in soup.select("div.individual_internship") or soup.select("div.internship_meta") or soup.select("div[class*=internship]") or soup.select("div[class*=card]"):
-        links = card.select("a[href*='/job/']") or card.select("a[href*='/internship/']")
-        title_el = links[0] if links else None
-        comp_el = card.select_one("a[class*=company]") or card.select_one("p.company-name")
-        if title_el:
-            title = title_el.get_text().strip()
-            if title in seen: continue
-            seen.add(title)
-            co = comp_el.get_text().strip() if comp_el else "Internshala"
-            link = title_el.get("href", "")
-            if link and not link.startswith("http"): link = "https://internshala.com" + link
-            if relevant(title):
-                jobs.append({"co": co, "role": title[:100], "url": link, "desc": "", "source": source_name})
-    return jobs[:10]
+
+def handler_company_batch(batch_size, source_name):
+    """Scrape batch_size random companies from companies.json"""
+    if not os.path.exists(COMPANIES_FILE):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] companies.json not found, skipping company batch")
+        return []
+    with open(COMPANIES_FILE, encoding="utf-8") as f:
+        companies = json.load(f)
+    random.shuffle(companies)
+    selected = companies[:batch_size]
+
+    with company_progress_lock:
+        company_progress["total"] = len(selected)
+        company_progress["done"] = 0
+        company_progress["current"] = "Starting..."
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Company batch: scanning {len(selected)} companies with {sum(len(c.get('urls',[])) for c in selected)} career URLs")
+
+    all_jobs = []
+    seen_titles = set()
+    jobs_lock = threading.Lock()
+
+    def try_company(co):
+        name = co.get("name", "?")
+        with company_progress_lock:
+            company_progress["current"] = name
+        company_jobs = []
+        for url in co.get("urls", []):
+            parsed = urlparse(url)
+            path = parsed.path.rstrip("/")
+            if path == "" or path == "/":
+                continue
+            html = fetch_text_fast(url, timeout=6)
+            if not html: continue
+            soup = BeautifulSoup(html, "html5lib")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                title = a.get_text().strip()
+                if not title or len(title) < 10: continue
+                job_indicators = ["job","career","position","opening","role","opportunity","apply","hiring"]
+                if not any(x in href.lower() for x in job_indicators):
+                    if not any(x in title.lower() for x in job_indicators): continue
+                if any(x in href.lower() for x in ["login","sign","register","#","javascript"]): continue
+                t_clean = re.sub(r'\s+', ' ', title).strip()[:100]
+                if t_clean in seen_titles: continue
+                if relevant(title):
+                    if not href.startswith("http"):
+                        href = urljoin(url, href)
+                    company_jobs.append({"co": name, "role": t_clean, "url": href, "desc": "", "source": source_name})
+                    seen_titles.add(t_clean)
+            if company_jobs:
+                break
+        with company_progress_lock:
+            company_progress["done"] += 1
+        return company_jobs[:3]
+
+    with ThreadPoolExecutor(max_workers=50) as ex:
+        for result in ex.map(try_company, selected):
+            if result:
+                with jobs_lock:
+                    all_jobs.extend(result)
+
+    with company_progress_lock:
+        company_progress["current"] = ""
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Company batch complete: {len(all_jobs)} jobs from {len(selected)} companies")
+    return all_jobs[:500]
 
 
 # =============================================================
-# 200+ SOURCES LIST
+# 300+ SOURCES LIST
 # Fields: (source_name, handler_function, handler_arg)
 # Each source = one unique website/URL being queried
 # =============================================================
 
 SOURCES = []
 
-# --- 30 COMPANY CAREER PAGES ---
-CAREER_PAGES = [
-    ("Google AI", "https://careers.google.com/jobs/results/?q=generative+AI"),
-    ("Microsoft AI", "https://jobs.careers.microsoft.com/global/en/search?q=generative%20AI"),
-    ("Meta AI", "https://www.metacareers.com/jobs/?q=generative%20AI"),
-    ("Amazon AI India", "https://www.amazon.jobs/en/search?base_query=generative+AI&loc_query=India"),
-    ("NVIDIA AI", "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/jobs?q=generative+AI"),
-    ("Apple AI", "https://jobs.apple.com/en-us/search?search=generative%20AI"),
-    ("IBM AI", "https://www.ibm.com/careers/search/?q=generative%20AI"),
-    ("Intel AI", "https://jobs.intel.com/search?q=generative+AI"),
-    ("Salesforce AI", "https://careers.salesforce.com/en/jobs/?q=generative+AI"),
-    ("Adobe AI", "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced/jobs?q=generative+AI"),
-    ("Cisco AI", "https://jobs.cisco.com/jobs/search?q=generative+AI"),
-    ("Oracle AI", "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/search?keyword=generative+AI"),
-    ("Uber AI", "https://www.uber.com/us/en/careers/list/?q=generative+AI"),
-    ("Qualcomm AI", "https://qualcomm.wd5.myworkdayjobs.com/en-US/External/jobs?q=generative+AI"),
-    ("AMD AI", "https://careers.amd.com/search?q=generative+AI"),
-    ("Dell AI", "https://jobs.dell.com/search?q=generative+AI"),
-    ("HP AI", "https://jobs.hp.com/search?q=generative+AI"),
-    ("Samsung India", "https://www.samsung.com/in/careers/search/?q=ai"),
-    ("Siemens India", "https://jobs.siemens.com/search?q=ai+fresher&location=india"),
-    ("Bosch India", "https://www.bosch.in/careers/search/?q=ai"),
-    ("TCS AI", "https://careers.tcs.com/search?q=ai+fresher"),
-    ("Infosys AI", "https://career.infosys.com/joblist?q=ai+fresher"),
-    ("Wipro AI", "https://careers.wipro.com/search?q=ai+fresher"),
-    ("Accenture AI", "https://www.accenture.com/in-en/careers/jobsearch?q=generative+ai+fresher"),
-    ("Cognizant AI", "https://careers.cognizant.com/search?q=generative+AI+fresher"),
-    ("Capgemini AI", "https://www.capgemini.com/careers/job-results/?keywords=generative+AI+fresher"),
-    ("HCL AI", "https://www.hcltech.com/careers/search?q=AI+fresher"),
-    ("TechM AI", "https://careers.techmahindra.com/search?q=AI+fresher"),
-    ("Persistent AI", "https://careers.persistent.com/search?q=generative+ai+fresher"),
-    ("Flipkart AI", "https://www.flipkartcareers.com/search?q=AI+fresher"),
-]
-for name, url in CAREER_PAGES:
-    SOURCES.append((name, handler_generic_careers, url))
-
-# --- 30 MORE INDIAN COMPANY CAREER PAGES ---
-INDIAN_CAREERS = [
-    ("Swiggy AI", "https://careers.swiggy.com/search?q=AI+fresher"),
-    ("Zomato AI", "https://www.zomato.com/careers?q=AI"),
-    ("Paytm AI", "https://paytm.careers/?q=AI"),
-    ("Razorpay AI", "https://razorpay.com/careers/?q=AI"),
-    ("PhonePe AI", "https://careers.phonepe.com/search?q=AI"),
-    ("Groww AI", "https://groww.in/careers?q=AI"),
-    ("Zerodha AI", "https://zerodha.com/careers?q=AI"),
-    ("Nykaa AI", "https://careers.nykaa.com/search?q=AI"),
-    ("Meesho AI", "https://careers.meesho.com/search?q=AI"),
-    ("ShareChat AI", "https://careers.sharechat.com/search?q=AI"),
-    ("Zoho AI", "https://careers.zoho.com/search?q=ai+fresher"),
-    ("Freshworks AI", "https://careers.freshworks.com/search?q=ai+fresher"),
-    ("Postman AI", "https://www.postman.com/company/careers/?q=ai"),
-    ("BrowserStack AI", "https://www.browserstack.com/careers?q=ai"),
-    ("Chargebee AI", "https://www.chargebee.com/careers/?q=ai"),
-    ("LTI Mindtree", "https://careers.ltimindtree.com/search?q=ai+fresher"),
-    ("Mphasis AI", "https://careers.mphasis.com/search?q=ai"),
-    ("Coforge AI", "https://careers.coforge.com/search?q=ai"),
-    ("KPIT AI", "https://careers.kpit.com/search?q=ai"),
-    ("L&T Tech AI", "https://careers.lnttechservices.com/search?q=ai"),
-    ("Tata Elxsi", "https://careers.tataelxsi.com/search?q=ai"),
-    ("OpenText AI", "https://careers.opentext.com/search?q=ai"),
-    ("SAP Labs India", "https://www.sap.com/careers/search.html?q=ai&location=india"),
-    ("VMware AI", "https://careers.vmware.com/search?q=ai"),
-    ("Red Hat AI", "https://www.redhat.com/en/jobs/search?q=ai"),
-    ("Databricks AI", "https://www.databricks.com/company/careers/search?q=ai"),
-    ("Snowflake AI", "https://careers.snowflake.com/search?q=ai"),
-    ("ServiceNow AI", "https://careers.servicenow.com/search?q=ai"),
-    ("HubSpot AI", "https://www.hubspot.com/careers/search?q=ai"),
-    ("Atlassian AI", "https://www.atlassian.com/company/careers/search?q=ai"),
-]
-for name, url in INDIAN_CAREERS:
-    SOURCES.append((name, handler_generic_careers, url))
-
-# --- 40 MORE COMPANY CAREER PAGES ---
-MORE_CAREERS = [
-    ("Splunk AI", "https://careers.splunk.com/search?q=ai"),
-    ("Datadog AI", "https://www.datadoghq.com/careers/search/?q=ai"),
-    ("NetApp AI", "https://careers.netapp.com/search?q=ai"),
-    ("Nutanix AI", "https://www.nutanix.com/company/careers/search?q=ai"),
-    ("Cloudflare AI", "https://www.cloudflare.com/careers/search/?q=ai"),
-    ("MongoDB AI", "https://www.mongodb.com/careers/search?q=ai"),
-    ("Elastic AI", "https://www.elastic.co/about/careers/search?q=ai"),
-    ("Confluent AI", "https://www.confluent.io/careers/search/?q=ai"),
-    ("HashiCorp AI", "https://www.hashicorp.com/careers/search?q=ai"),
-    ("GitLab AI", "https://about.gitlab.com/jobs/search/?q=ai"),
-    ("Goldman Sachs", "https://www.goldmansachs.com/careers/search?q=ai+india"),
-    ("JPMC India", "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/search?keyword=ai&location=India"),
-    ("Morgan Stanley", "https://www.morganstanley.com/careers/search?q=ai+india"),
-    ("Barclays India", "https://barclays.wd3.myworkdayjobs.com/en-US/Barclays_External_Careers/jobs?q=ai&locationCountry=India"),
-    ("Deutsche Bank", "https://careers.db.com/search?q=ai+india"),
-    ("HSBC India", "https://www.hsbc.com/careers/search?q=ai+india"),
-    ("Amex India", "https://www.americanexpress.com/en-us/careers/search/?q=ai+india"),
-    ("Mastercard AI", "https://mastercard.wd1.myworkdayjobs.com/en-US/CorporateCareers/jobs?q=ai&locationCountry=India"),
-    ("Visa India", "https://visa.wd1.myworkdayjobs.com/en-US/ExternalVisaCareerSite/jobs?q=ai&locationCountry=India"),
-    ("PayPal India", "https://paypal.eightfold.ai/careers?query=ai&location=india"),
-    ("Stripe India", "https://stripe.com/jobs/search?q=ai&location=india"),
-    ("ICICI Bank", "https://www.icicicareers.com/search?q=ai"),
-    ("HDFC Bank", "https://careers.hdfcbank.com/search?q=ai"),
-    ("Axis Bank", "https://www.axisbank.com/careers/search?q=ai"),
-    ("Bajaj Finserv", "https://www.bajajfinserv.in/careers/search?q=ai"),
-    ("Reliance Jio", "https://careers.jio.com/search?q=ai"),
-    ("Airtel India", "https://www.airtel.in/careers/search?q=ai"),
-    ("Adani Group", "https://www.adani.com/careers/search?q=ai"),
-    ("Mahindra AI", "https://www.mahindra.com/careers/search?q=ai"),
-    ("Maruti Suzuki", "https://www.marutisuzuki.com/careers/search?q=ai"),
-    ("Tata Motors", "https://www.tatamotors.com/careers/search?q=ai"),
-    ("Honeywell India", "https://careers.honeywell.com/search?q=ai&location=India"),
-    ("Schneider India", "https://www.se.com/in/en/about-us/careers/search/?q=ai"),
-    ("ABB India", "https://careers.abb/search?q=ai&location=in"),
-    ("Philips India", "https://www.careers.philips.com/search?q=ai&location=india"),
-    ("GE India", "https://www.ge.com/careers/search?q=ai&location=india"),
-    ("GE HealthCare", "https://careers.gehealthcare.com/search?q=ai&location=india"),
-    ("3M India", "https://www.3mindia.in/careers/search?q=ai"),
-    ("Caterpillar India", "https://www.caterpillar.com/en/careers/search.html?q=ai+india"),
-    ("John Deere India", "https://www.deere.com/en/careers/search/?q=ai+india"),
-]
-for name, url in MORE_CAREERS:
-    SOURCES.append((name, handler_generic_careers, url))
+# --- Companies from companies.json (2500 random per hunt) ---
+SOURCES.append(("Companies (2500)", handler_company_batch, 2500))
 
 # --- 20 JOB BOARDS (multiple queries each) ---
 JOBBOARD_NAUKRI = [
@@ -372,18 +307,7 @@ JOBBOARD_NAUKRI = [
 for q in JOBBOARD_NAUKRI:
     SOURCES.append((f"Naukri-{q[:20]}", handler_naukri, q))
 
-INTERNSHALA_PATHS = [
-    "genai-jobs", "artificial-intelligence-jobs", "machine-learning-jobs",
-    "deep-learning-jobs", "data-science-jobs", "nlp-jobs",
-    "python-jobs", "research-jobs", "tech-jobs",
-    "software-engineering-jobs", "ai-engineer-jobs",
-    "computer-science-jobs", "data-analyst-jobs",
-    "ml-engineer-jobs", "llm-jobs",
-]
-for p in INTERNSHALA_PATHS:
-    SOURCES.append((f"Internshala-{p[:20]}", handler_internshala, p))
-
-# --- INDEED (10 country domains × 3 queries = 30 sources) ---
+# --- INDEED (10 country domains x 3 queries = 30 sources) ---
 INDEED_DOMAINS = [
     ("in.indeed.com", "India"), ("www.indeed.com", "India"),
     ("uk.indeed.com", "UK"), ("ca.indeed.com", "Canada"),
@@ -495,7 +419,6 @@ EXTRA_JOB_BOARDS = [
     ("Hirist-AI", "https://www.hirist.com/search/?q=ai+fresher"),
     ("Hirist-ML", "https://www.hirist.com/search/?q=machine+learning+fresher"),
     ("Upwork-AI", "https://www.upwork.com/search/jobs/?q=generative+AI"),
-    ("Freelancer-AI", "https://www.freelancer.com/jobs/artificial-intelligence/"),
     ("Glassdoor-AI", "https://www.glassdoor.co.in/Job/india-generative-ai-jobs-SRCH_IL.0,5_IN115_KO6,20.htm"),
     ("Learn4Good-AI", "https://www.learn4good.com/jobs/india/artificial-intelligence/"),
 ]
@@ -556,7 +479,7 @@ def hunt_all(exclude_ids=None):
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(scrape_one, item) for item in SOURCES]
         for future in as_completed(futures):
-            pass  # results collected in scrape_one
+            pass
 
     # Deduplicate and exclude applied
     seen = set()
@@ -576,7 +499,10 @@ def hunt_all(exclude_ids=None):
 
 def get_progress():
     with progress_lock:
-        return dict(progress)
+        p = dict(progress)
+    with company_progress_lock:
+        p["company"] = dict(company_progress)
+    return p
 
 
 if __name__ == "__main__":

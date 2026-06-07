@@ -1,5 +1,5 @@
 import json, os, hashlib, threading, time
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +19,11 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(BASE, "jobs.json")
 HISTORY_FILE = os.path.join(BASE, "history.json")
 APPLIED_FILE = os.path.join(BASE, "applied.json")
+SCHEDULE_FILE = os.path.join(BASE, "schedule.json")
+TEMPLATE_FILE = os.path.join(BASE, "template.html")
 
 cache = {"jobs": [], "last_updated": None, "running": False}
+schedule_info = {"last_auto": None, "enabled": True, "hour": 2}
 
 
 def load_jobs():
@@ -53,190 +56,89 @@ def save_applied(a):
     with open(APPLIED_FILE, "w") as f:
         json.dump(list(a), f)
 
+def load_schedule():
+    global schedule_info
+    if os.path.exists(SCHEDULE_FILE):
+        with open(SCHEDULE_FILE) as f:
+            s = json.load(f)
+            schedule_info["last_auto"] = s.get("last_auto")
+            schedule_info["enabled"] = s.get("enabled", True)
+            schedule_info["hour"] = s.get("hour", 2)
+    return schedule_info
+
+def save_schedule():
+    with open(SCHEDULE_FILE, "w") as f:
+        json.dump(schedule_info, f)
+
+def classify_role(role):
+    r = (role or "").lower()
+    if any(x in r for x in ["prompt engineer", "prompt"]):
+        return "prompt-eng"
+    if any(x in r for x in ["rag", "retrieval"]):
+        return "rag"
+    if any(x in r for x in ["agentic"]):
+        return "agentic-ai"
+    if any(x in r for x in ["genai", "generative ai", "generative"]):
+        return "genai"
+    if any(x in r for x in ["nlp", "natural language"]):
+        return "nlp-eng"
+    if any(x in r for x in ["machine learning", "ml engineer"]):
+        return "ml-eng"
+    if any(x in r for x in ["ai engineer", "ai developer", "ai/ml"]):
+        return "ai-eng"
+    if any(x in r for x in ["deep learning"]):
+        return "deep-learning"
+    if any(x in r for x in ["llm", "large language"]):
+        return "llm"
+    return "other"
+
+def time_ago(iso_str):
+    if not iso_str: return ""
+    try:
+        d = datetime.fromisoformat(iso_str)
+    except:
+        return iso_str[:10] if iso_str else ""
+    diff = datetime.now() - d
+    if diff.days > 30: return f"{diff.days//30}mo ago"
+    if diff.days > 0: return f"{diff.days}d ago"
+    if diff.seconds >= 3600: return f"{diff.seconds//3600}h ago"
+    if diff.seconds >= 60: return f"{diff.seconds//60}m ago"
+    return "just now"
+
+def count_new_24h(jobs):
+    cutoff = datetime.now() - timedelta(hours=24)
+    return sum(1 for j in jobs if j.get("date") and _parse_iso(j["date"]) > cutoff)
+
+def _parse_iso(s):
+    try: return datetime.fromisoformat(s)
+    except: return datetime.min
+
+
+def load_template():
+    if os.path.exists(TEMPLATE_FILE):
+        with open(TEMPLATE_FILE, encoding="utf-8") as f:
+            return f.read()
+    return "<html><body><h1>Template not found</h1></body></html>"
+
+_TEMPLATE_CACHE = [None]
+
 def generate_html(jobs, last_updated, is_running):
-    jobs_json = json.dumps(jobs)
-    sources = sorted(set(j.get("source", "Unknown") for j in jobs))
-    sources_json = json.dumps(sources)
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GenAI Job Finder</title>
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; }}
-.header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 24px 40px; border-bottom: 1px solid #2a2a4a; }}
-.header h1 {{ color: #fff; font-size: 24px; }}
-.header p {{ color: #8888aa; margin-top: 4px; }}
-.container {{ max-width: 1300px; margin: 0 auto; padding: 24px; }}
-.stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 24px; }}
-.stat-card {{ background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 16px; text-align: center; }}
-.stat-card .num {{ font-size: 28px; font-weight: 700; color: #fff; }}
-.stat-card .label {{ font-size: 12px; color: #8888aa; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }}
-.toolbar {{ display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }}
-.btn {{ padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s; }}
-.btn-primary {{ background: #4361ee; color: white; }}
-.btn-primary:hover {{ background: #3a56d4; }}
-.btn-success {{ background: #2a9d8f; color: white; }}
-.btn-success:hover {{ background: #21867a; }}
-.btn-outline {{ background: transparent; border: 1px solid #3a3a5a; color: #aaaacc; }}
-.btn-outline:hover {{ background: #1a1a2e; }}
-.refresh-btn {{ background: #4361ee; color: white; padding: 8px 16px; }}
-.refresh-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-select, input {{ padding: 8px 12px; border: 1px solid #2a2a4a; border-radius: 8px; font-size: 14px; background: #1a1a2e; color: #e0e0e0; }}
-.search-input {{ flex: 1; min-width: 200px; background: #1a1a2e; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 8px 12px; border-radius: 8px; }}
-table {{ width: 100%; border-collapse: collapse; background: #1a1a2e; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a4a; }}
-th, td {{ padding: 12px 16px; text-align: left; border-bottom: 1px solid #2a2a4a; }}
-th {{ background: #12122a; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #8888aa; font-weight: 600; }}
-td {{ font-size: 14px; }}
-tr:hover {{ background: #1e1e3a; }}
-.source-badge {{ padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #2a2a4a; color: #aaaacc; }}
-.job-actions {{ display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }}
-.empty-state {{ text-align: center; padding: 60px 20px; color: #666688; }}
-.loading {{ display: inline-block; width: 16px; height: 16px; border: 2px solid #8888aa; border-top: 2px solid #4361ee; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; }}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-.last-updated {{ color: #666688; font-size: 12px; }}
-.progress-bar {{ height: 4px; background: #2a2a4a; border-radius: 2px; margin: 8px 0; overflow: hidden; }}
-.progress-fill {{ height: 100%; background: linear-gradient(90deg, #4361ee, #2a9d8f); border-radius: 2px; transition: width 2s; }}
-.progress-text {{ color: #8888aa; font-size: 12px; text-align: center; margin-bottom: 8px; }}
-@media (max-width: 768px) {{ .container {{ padding: 12px; }} .header {{ padding: 16px; }} td, th {{ padding: 8px; }} }}
-</style>
-</head>
-<body>
-<div class="header">
-    <h1>GenAI Job Finder</h1>
-    <p>Scraping 200+ sources for GenAI jobs — accessible from any device</p>
-</div>
-<div class="container">
-    <div id="progressArea" style="display:none">
-        <div class="progress-text" id="progressText">Initializing...</div>
-        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-    </div>
-    <div class="stats" id="stats"></div>
-    <div class="toolbar">
-        <button class="btn refresh-btn" id="huntBtn" onclick="triggerHunt()">🔄 Refresh Jobs</button>
-        <span class="last-updated" id="lastUpdated">Last: {last_updated}</span>
-        <select id="sourceFilter" onchange="filterJobs()"><option value="">All Sources</option></select>
-        <input class="search-input" id="searchInput" placeholder="Search company or role..." oninput="filterJobs()">
-        <label style="color:#8888aa;font-size:13px;display:flex;align-items:center;gap:4px">
-            <input type="checkbox" id="hideApplied" onchange="filterJobs()" checked> Hide Applied
-        </label>
-    </div>
-    <table>
-        <thead><tr>
-            <th>Source</th><th>Company</th><th>Role</th><th>Location</th><th>Salary</th><th>Date</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="jobTable"></tbody>
-    </table>
-    <div class="empty-state" id="emptyState" style="display:none">
-        <p>No jobs found matching your criteria.</p>
-    </div>
-</div>
-<script>
-let allJobs = {jobs_json};
-let sources = {sources_json};
-let progressInterval = null;
+    if _TEMPLATE_CACHE[0] is None:
+        _TEMPLATE_CACHE[0] = load_template()
+    html = _TEMPLATE_CACHE[0]
 
-const sel = document.getElementById("sourceFilter");
-sources.forEach(s => {{ sel.innerHTML += `<option value="${{s}}">${{s}}</option>` }});
+    hr = schedule_info.get("hour", 2)
+    schedule_str = f"~{hr}:00 AM daily" if schedule_info.get("enabled") else "Off"
+    last_str = time_ago(last_updated) if last_updated else "Never"
 
-function render(jobs) {{
-    const total = allJobs.length;
-    const srcCounts = {{}};
-    allJobs.forEach(j => {{ const s = j.source || 'Unknown'; srcCounts[s] = (srcCounts[s]||0)+1 }});
-    document.getElementById("stats").innerHTML = `
-        <div class="stat-card"><div class="num">${{total}}</div><div class="label">Total Jobs</div></div>
-        <div class="stat-card"><div class="num">${{Object.keys(srcCounts).length}}</div><div class="label">Sources Hit</div></div>
-        <div class="stat-card"><div class="num">${{new Set(allJobs.map(j=>j.co)).size}}</div><div class="label">Companies</div></div>
-        <div class="stat-card"><div class="num">${{allJobs.filter(j=>(j.role+'').toLowerCase().includes('genai')||(j.role+'').toLowerCase().includes('generative')).length}}</div><div class="label">GenAI Roles</div></div>
-    `;
-    const tbody = document.getElementById("jobTable");
-    const empty = document.getElementById("emptyState");
-    if (!jobs || jobs.length === 0) {{ tbody.innerHTML = ""; empty.style.display = "block"; return; }}
-    empty.style.display = "none";
-    tbody.innerHTML = jobs.map(j => {{
-        const src = j.source || '?', co = j.co || '?', role = j.role || '?';
-        const loc = j.location || j.desc?.split(',')[0] || '-';
-        const sal = j.salary || '-';
-        const date = j.date ? j.date.slice(0,10) : '-';
-        const url = j.url || '';
-        const applied = appliedIds.has(j.id);
-        const applyBtn = url ? `<a href="${{esc(url)}}" target="_blank" class="btn btn-success" style="padding:4px 10px;font-size:12px">Apply</a>` : '';
-        const tickBtn = applied
-            ? `<span class="source-badge" style="background:#2a9d8f;color:#fff">✓ Applied</span>`
-            : `<button class="btn btn-outline" style="padding:3px 8px;font-size:11px" onclick="markApplied('${{j.id}}')">✓ Mark Applied</button>`;
-        const rowStyle = applied ? 'opacity:0.4' : '';
-        return `<tr style="${{rowStyle}}"><td><span class="source-badge">${{esc(src)}}</span></td>
-            <td><strong>${{esc(co)}}</strong></td><td>${{esc(role)}}</td>
-            <td>${{esc(loc)}}</td><td>${{esc(sal)}}</td><td>${{date}}</td>
-            <td class="job-actions">${{applyBtn}} ${{tickBtn}}</td></tr>`;
-    }}).join("");
-}}
-function esc(s) {{ if (!s) return '-'; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }}
-let appliedIds = new Set();
-async function loadApplied() {{
-    try {{
-        const r = await fetch('/api/applied');
-        const d = await r.json();
-        appliedIds = new Set(d.applied || []);
-        filterJobs();
-    }} catch(e) {{}}
-}}
-async function markApplied(id) {{
-    try {{
-        await fetch('/api/apply/' + id, {{method:'POST'}});
-        appliedIds.add(id);
-        filterJobs();
-    }} catch(e) {{ alert('Failed to mark as applied'); }}
-}}
-function filterJobs() {{
-    let jobs = [...allJobs];
-    const src = document.getElementById("sourceFilter").value;
-    const q = document.getElementById("searchInput").value.toLowerCase();
-    const hide = document.getElementById("hideApplied").checked;
-    if (src) jobs = jobs.filter(j => (j.source||'').toLowerCase() === src.toLowerCase());
-    if (q) jobs = jobs.filter(j => (j.role+'').toLowerCase().includes(q) || (j.co+'').toLowerCase().includes(q));
-    if (hide) jobs = jobs.filter(j => !appliedIds.has(j.id));
-    render(jobs);
-}}
-async function pollProgress() {{
-    try {{
-        const r = await fetch('/api/progress');
-        const p = await r.json();
-        document.getElementById("progressArea").style.display = "block";
-        const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
-        document.getElementById("progressFill").style.width = pct + "%";
-        document.getElementById("progressText").textContent =
-            `Scanning ${{p.current || '...'}} — ${{p.done}}/${{p.total}} sources (${{p.hits}} found jobs, ${{p.errors}} errors)`;
-        if (!p.running) {{
-            clearInterval(progressInterval);
-            progressInterval = null;
-            document.getElementById("progressArea").style.display = "none";
-            const r2 = await fetch('/api/jobs');
-            const j = await r2.json();
-            allJobs = j.jobs;
-            document.getElementById("lastUpdated").textContent = 'Last: ' + (j.last_updated || 'Just now');
-            filterJobs();
-            document.getElementById("huntBtn").disabled = false;
-            document.getElementById("huntBtn").innerHTML = '🔄 Refresh Jobs';
-        }}
-    }} catch(e) {{}}
-}}
-async function triggerHunt() {{
-    const btn = document.getElementById("huntBtn");
-    btn.disabled = true; btn.innerHTML = '<span class="loading"></span> Hunting...';
-    try {{
-        await fetch('/api/hunt', {{method:'POST'}});
-        progressInterval = setInterval(pollProgress, 2000);
-        pollProgress();
-    }} catch(e) {{ btn.disabled = false; btn.innerHTML = '🔄 Refresh Jobs'; }}
-}}
-loadApplied();
-filterJobs();
-</script>
-</body>
-</html>"""
+    html = html.replace("__JOBS_JSON__", json.dumps(jobs))
+    html = html.replace("__SOURCES_JSON__", json.dumps(sorted(set(j.get("source", "Unknown") for j in jobs))))
+    html = html.replace("__LAST_UPDATED__", last_str)
+    html = html.replace("__SCHEDULE_INFO__", schedule_str)
+    html = html.replace("__NEW_24H__", str(count_new_24h(jobs)))
+    html = html.replace("__GENAI_COUNT__", str(sum(1 for j in jobs if classify_role(j.get("role","")) == "genai")))
+    html = html.replace("__COMPANY_COUNT__", str(len(set(j.get("co","") for j in jobs if j.get("co")))))
+    return html
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -245,13 +147,29 @@ def index(request: Request):
     return generate_html(jobs, cache["last_updated"] or "Never", cache["running"])
 
 @app.get("/api/jobs")
-def get_jobs(source: str = None, search: str = None):
+def get_jobs(source: str = None, search: str = None, role: str = None, date_from: str = None, date_to: str = None, sort: str = "newest"):
     jobs = cache["jobs"] or load_jobs()
     if source:
         jobs = [j for j in jobs if j.get("source", "").lower() == source.lower()]
     if search:
         s = search.lower()
         jobs = [j for j in jobs if s in j.get("role","").lower() or s in j.get("co","").lower()]
+    if role:
+        jobs = [j for j in jobs if classify_role(j.get("role","")) == role.lower()]
+    if date_from:
+        try:
+            df = datetime.fromisoformat(date_from)
+            jobs = [j for j in jobs if j.get("date") and datetime.fromisoformat(j["date"]) >= df]
+        except: pass
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to)
+            jobs = [j for j in jobs if j.get("date") and datetime.fromisoformat(j["date"]) <= dt]
+        except: pass
+    if sort == "oldest":
+        jobs.sort(key=lambda j: j.get("date",""))
+    else:
+        jobs.sort(key=lambda j: j.get("date",""), reverse=True)
     return {"count": len(jobs), "jobs": jobs, "last_updated": cache["last_updated"]}
 
 @app.get("/api/stats")
@@ -263,6 +181,9 @@ def get_stats():
         sources[s] = sources.get(s, 0) + 1
     return {
         "total": len(jobs),
+        "new_24h": count_new_24h(jobs),
+        "genai_roles": sum(1 for j in jobs if classify_role(j.get("role","")) == "genai"),
+        "companies": len(set(j.get("co","") for j in jobs if j.get("co"))),
         "sources": sources,
         "last_updated": cache["last_updated"],
         "is_running": cache["running"]
@@ -271,7 +192,9 @@ def get_stats():
 @app.get("/api/progress")
 def get_progress():
     from scraper import get_progress as gp
-    return gp()
+    p = gp()
+    p["schedule"] = schedule_info
+    return p
 
 @app.post("/api/hunt")
 def trigger_hunt():
@@ -294,6 +217,18 @@ def get_applied():
 def get_sources():
     jobs = cache["jobs"] or load_jobs()
     return {"sources": sorted(set(j.get("source", "Unknown") for j in jobs))}
+
+@app.get("/api/schedule")
+def get_schedule():
+    load_schedule()
+    return schedule_info
+
+@app.post("/api/schedule/toggle")
+def toggle_schedule():
+    load_schedule()
+    schedule_info["enabled"] = not schedule_info["enabled"]
+    save_schedule()
+    return schedule_info
 
 
 def run_hunt():
@@ -321,8 +256,38 @@ def run_hunt():
         print(f"Hunt complete: {len(fresh)} unique from {len(SOURCES)} sources, {len(existing)} total")
     except Exception as e:
         print(f"Hunt error: {e}")
+        import traceback; traceback.print_exc()
     finally:
         cache["running"] = False
+
+
+def scheduler_loop():
+    """Background thread that auto-triggers hunts at night"""
+    while True:
+        try:
+            load_schedule()
+            now = datetime.now()
+            if schedule_info.get("enabled"):
+                target_hour = schedule_info.get("hour", 2)
+                if now.hour == target_hour and 0 <= now.minute < 5:
+                    last_auto = schedule_info.get("last_auto")
+                    if last_auto:
+                        try:
+                            last = datetime.fromisoformat(last_auto)
+                            if (now - last).total_seconds() < 82800:
+                                time.sleep(300)
+                                continue
+                        except:
+                            pass
+                    if not cache["running"]:
+                        print(f"[{now.strftime('%H:%M:%S')}] Nightly auto-hunt triggered")
+                        run_hunt()
+                        schedule_info["last_auto"] = datetime.now().isoformat()
+                        save_schedule()
+                    time.sleep(300)
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+        time.sleep(60)
 
 
 def seed_default_jobs():
@@ -345,8 +310,12 @@ def seed_default_jobs():
     cache["last_updated"] = datetime.now().isoformat()
     print(f"Seeded {len(defaults)} default jobs")
 
+# Start scheduler thread
+scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
+scheduler_thread.start()
 
 seed_default_jobs()
+load_schedule()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
